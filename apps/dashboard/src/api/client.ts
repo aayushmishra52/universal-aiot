@@ -16,7 +16,9 @@ import type {
 export type { Automation, Health } from "@aiot/contracts";
 
 export const API_BASE =
-  import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+  (import.meta.env.VITE_API_URL ?? "http://localhost:4000")
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "") + "/api";
 const TOKEN_KEY = "aiot.auth.token";
 
 export class ApiError extends Error {
