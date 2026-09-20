@@ -56,13 +56,15 @@ describe("api client", () => {
   it("sends commands with default action 'set'", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
-        commandId: "cmd-1",
-        capabilityId: "pump",
-        action: "set",
-        params: { value: true },
-        issuedAt: 1000,
-        expiresAt: 31000,
-        status: "PENDING",
+        command: {
+          commandId: "cmd-1",
+          capabilityId: "pump",
+          action: "set",
+          params: { value: true },
+          issuedAt: 1000,
+          expiresAt: 31000,
+          status: "PENDING",
+        },
       }),
     );
     vi.stubGlobal("fetch", fetchMock);

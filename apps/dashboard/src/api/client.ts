@@ -16,9 +16,7 @@ import type {
 export type { Automation, Health } from "@aiot/contracts";
 
 export const API_BASE =
-  (import.meta.env.VITE_API_URL ?? "http://localhost:4000")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/, "") + "/api";
+  import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "aiot.auth.token";
 
 export class ApiError extends Error {
@@ -175,21 +173,26 @@ export async function me(): Promise<{ user: User; orgs: Org[] }> {
 
 /* ---------- orgs & projects ---------- */
 export async function createOrg(name: string): Promise<Org> {
-  return request("/api/orgs", { method: "POST", body: { name } });
+  const res = await request<{ org: Org }>("/api/orgs", { method: "POST", body: { name } });
+  return res.org;
 }
 export async function listOrgs(): Promise<Org[]> {
-  return request("/api/orgs");
+  const res = await request<{ orgs: Org[] }>("/api/orgs");
+  return res.orgs;
 }
 export async function listProjects(orgId: string): Promise<Project[]> {
-  return request(`/api/orgs/${orgId}/projects`);
+  const res = await request<{ projects: Project[] }>(`/api/orgs/${orgId}/projects`);
+  return res.projects;
 }
 export async function createProject(orgId: string, name: string): Promise<Project> {
-  return request(`/api/orgs/${orgId}/projects`, { method: "POST", body: { name } });
+  const res = await request<{ project: Project }>(`/api/orgs/${orgId}/projects`, { method: "POST", body: { name } });
+  return res.project;
 }
 
 /* ---------- devices ---------- */
 export async function listDevices(projectId: string): Promise<DeviceSummary[]> {
-  return request(`/api/projects/${projectId}/devices`);
+  const res = await request<{ devices: DeviceSummary[] }>(`/api/projects/${projectId}/devices`);
+  return res.devices;
 }
 export async function createDevice(
   projectId: string,
@@ -228,13 +231,19 @@ export async function getTelemetry(
   if (opts.capability) q.set("capability", opts.capability);
   if (opts.limit) q.set("limit", String(opts.limit));
   const qs = q.toString();
-  return request(`/api/devices/${deviceId}/telemetry${qs ? `?${qs}` : ""}`);
+  const res = await request<{ telemetry: TelemetryPoint[] }>(
+    `/api/devices/${deviceId}/telemetry${qs ? `?${qs}` : ""}`,
+  );
+  return res.telemetry;
 }
 export async function listCommands(
   deviceId: string,
   limit = 50,
 ): Promise<CommandRecord[]> {
-  return request(`/api/devices/${deviceId}/commands?limit=${limit}`);
+  const res = await request<{ commands: CommandRecord[] }>(
+    `/api/devices/${deviceId}/commands?limit=${limit}`,
+  );
+  return res.commands;
 }
 export async function sendCommand(
   deviceId: string,
@@ -245,34 +254,41 @@ export async function sendCommand(
     ttlMs?: number;
   },
 ): Promise<CommandRecord> {
-  return request(`/api/devices/${deviceId}/commands`, {
+  const res = await request<{ command: CommandRecord }>(`/api/devices/${deviceId}/commands`, {
     method: "POST",
     body: { action: "set", ...input },
   });
+  return res.command;
 }
 
 /* ---------- automations ---------- */
 export async function listAutomations(projectId: string): Promise<Automation[]> {
-  return request(`/api/projects/${projectId}/automations`);
+  const res = await request<{ automations: Automation[] }>(`/api/projects/${projectId}/automations`);
+  return res.automations;
 }
 export async function createAutomation(
   projectId: string,
   input: AutomationInput,
 ): Promise<Automation> {
-  return request(`/api/projects/${projectId}/automations`, {
+  const res = await request<{ automation: Automation }>(`/api/projects/${projectId}/automations`, {
     method: "POST",
     body: input,
   });
+  return res.automation;
 }
 export async function updateAutomation(
   projectId: string,
   automationId: string,
   input: Partial<AutomationInput>,
 ): Promise<Automation> {
-  return request(`/api/projects/${projectId}/automations/${automationId}`, {
-    method: "PATCH",
-    body: input,
-  });
+  const res = await request<{ automation: Automation }>(
+    `/api/projects/${projectId}/automations/${automationId}`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+  return res.automation;
 }
 export async function deleteAutomation(
   projectId: string,
