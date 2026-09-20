@@ -1,0 +1,123 @@
+{
+  "startedAt": "2026-09-20T20:10:31.501Z",
+  "durationMs": 16924,
+  "config": {
+    "port": 4100,
+    "mqttPort": 11883,
+    "wsPort": 4101,
+    "databaseUrl": "<redacted-for-report>"
+  },
+  "total": 18,
+  "passed": 18,
+  "failed": 0,
+  "results": [
+    {
+      "step": 1,
+      "title": "start backend on fresh ports; /api/health -> {ok:true}",
+      "status": "PASS",
+      "evidence": "http=:4100 mqtt=:11883 ws=:4101"
+    },
+    {
+      "step": 2,
+      "title": "register user -> token + orgId",
+      "status": "PASS",
+      "evidence": "user e2e@test.local registered; org created (ids kept in report)"
+    },
+    {
+      "step": 3,
+      "title": "create project 'Golden Room'",
+      "status": "PASS",
+      "evidence": "project created (id kept in report)"
+    },
+    {
+      "step": 4,
+      "title": "create device -> DEV-XXXXX + one-time pairing creds",
+      "status": "PASS",
+      "evidence": "deviceId=DEV-UPUEVIN username=device_DEVUPUEVIN"
+    },
+    {
+      "step": 5,
+      "title": "start virtual device (golden-room, tick 500ms); wait 5s",
+      "status": "PASS",
+      "evidence": "process spawned"
+    },
+    {
+      "step": 6,
+      "title": "device ONLINE with temperature/humidity/fan capabilities",
+      "status": "PASS",
+      "evidence": "caps: fan,humidity,temperature"
+    },
+    {
+      "step": 7,
+      "title": "pair via API -> deviceToken (rotation: old pairing creds revoked)",
+      "status": "PASS",
+      "evidence": "ok=true rotated=true"
+    },
+    {
+      "step": 8,
+      "title": "rotation: old pairing password rejected; device reconnects with new token and is ONLINE",
+      "status": "PASS",
+      "evidence": "old-password pair rejected with HTTP 404; reconnected ONLINE"
+    },
+    {
+      "step": 9,
+      "title": "authz isolation: second user sees 404 on device and cannot command",
+      "status": "PASS",
+      "evidence": "GET device -> 404; POST command -> 404"
+    },
+    {
+      "step": 10,
+      "title": "telemetry rows with in-range values and valid messageIds",
+      "status": "PASS",
+      "evidence": "3 rows; temp=25.7 hum=62.3; messageId present"
+    },
+    {
+      "step": 11,
+      "title": "realtime WS: device.telemetry event received within 15s",
+      "status": "PASS",
+      "evidence": "event at=1789935039283"
+    },
+    {
+      "step": 12,
+      "title": "command fan=set(true) -> SUCCEEDED, reportedState.fan=true, WS command.acknowledged",
+      "status": "PASS",
+      "evidence": "commandId=cmd_U8DPJ7F210KSUSM2 status=SUCCEEDED; ws ack status=ACKNOWLEDGED"
+    },
+    {
+      "step": 13,
+      "title": "safety: 400 invalid_parameter; expired raw MQTT command -> device EXPIRED result, no actuation, no phantom backend row",
+      "status": "PASS",
+      "evidence": "banana -> 400; device result status=EXPIRED; fan still true"
+    },
+    {
+      "step": 14,
+      "title": "SIGKILL -> LWT -> OFFLINE + WS device.offline",
+      "status": "PASS",
+      "evidence": "status=OFFLINE; ws event at=1789935038499"
+    },
+    {
+      "step": 15,
+      "title": "reconnect with current token -> ONLINE + WS device.online",
+      "status": "PASS",
+      "evidence": "ws event at=1789935043038"
+    },
+    {
+      "step": 16,
+      "title": "automation (temp>10 -> fan on) fires on telemetry ingest; rule deleted",
+      "status": "PASS",
+      "evidence": "triggered command cmd_TT96Y5FCM07OTGQH createdBy=automation:eb2f683b-561b-4570-9198-24583d956448; deleted"
+    },
+    {
+      "step": "S1",
+      "title": "security: VIEWER member gets 403 on command POST",
+      "status": "PASS",
+      "evidence": "POST command -> 403"
+    },
+    {
+      "step": "S2",
+      "title": "security: 40x wrong-password login burst -> rate limited",
+      "status": "PASS",
+      "evidence": "10/40 requests got HTTP 429"
+    }
+  ]
+}
