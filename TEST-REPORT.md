@@ -1,19 +1,37 @@
 # Test report — Universal AIoT Platform end-to-end acceptance
 
-**Date:** 2026-09-21 (IST) · **Overall verdict: ✅ PASS**
+**Date:** 2026-09-26 (IST) · **Overall verdict: ✅ PASS** · release **v1.1.0**
 
 Every assertion below was executed for real (headless, no manual steps). Secrets
 (passwords, pairing credentials, device tokens, JWTs) are never printed in logs
 or reports — the runner redacts them at the source.
 
-- **Acceptance flow (steps 1–16 + 2 security checks): 18/18 PASS**
+- **Acceptance flow (steps 1–16 + E1 envelope check + 2 security checks): 19/19 PASS**
   (`tests/e2e/run.mjs`, runnable via `npm run e2e`)
-- **Workspace unit/integration suites: 156/156 PASS, 0 failures**
+- **Workspace unit/integration suites: 195/195 PASS, 0 failures**
+  (backend 58/58 · dashboard 44/44 · contracts 45/45 · sdk-generator 33/33 ·
+  virtual-device 15/15)
 - **Workspace builds: 5/5 PASS**
+- **aiot-sdk repo: build PASS · 44/44 tests PASS**
 - **Dashboard:** production build OK, `apps/dashboard/dist/index.html` present
 - **Firmware:** `aiot-sdk test` → **PUBLISHABLE**; real arduino-cli ESP32 compile
   produced `golden-e2e.ino.bin` (1,048,432 bytes)
 - Machine-readable details: [TEST-REPORT.json](./TEST-REPORT.json)
+
+## v1.1.0 re-verification notes
+
+- New suites: `apps/backend/tests/credentials.test.ts` (9 tests — credential
+  issuance once-only secret, metadata-only listing, revoke, real MQTT auth
+  accept/reject/revoked, `last_used_at`, cross-device topic isolation),
+  `apps/backend/tests/firebase_auth.test.ts` (4 tests — `/api/meta`
+  advertisement, 501 when disabled), dashboard `src/api/envelope.test.ts`
+  (12 regression tests for the envelope-unwrap crash fix — verified 11/12
+  fail on the pre-fix client), dashboard `src/components/overview.test.tsx`
+  (6) + `src/components/credentials.test.tsx` (3) +
+  `src/test/firebase-config.test.ts` (5), SDK `tests/credentials-tools.test.ts`
+  (11).
+- e2e step **E1** (new): authenticated list endpoints return envelope shapes
+  (`{projects:[...]}`); unauthenticated access returns clean JSON 401.
 
 ## Acceptance config
 

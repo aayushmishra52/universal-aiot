@@ -1,14 +1,14 @@
 {
-  "startedAt": "2026-09-20T20:10:31.501Z",
-  "durationMs": 16924,
+  "startedAt": "2026-09-26T15:57:34.437Z",
+  "durationMs": 16173,
   "config": {
     "port": 4100,
     "mqttPort": 11883,
     "wsPort": 4101,
     "databaseUrl": "<redacted-for-report>"
   },
-  "total": 18,
-  "passed": 18,
+  "total": 19,
+  "passed": 19,
   "failed": 0,
   "results": [
     {
@@ -30,10 +30,16 @@
       "evidence": "project created (id kept in report)"
     },
     {
+      "step": "E1",
+      "title": "envelope contract: GET /api/orgs/:id/projects -> {projects:[...]}; unauthenticated -> JSON 401",
+      "status": "PASS",
+      "evidence": "projects=1; unauthed=401"
+    },
+    {
       "step": 4,
       "title": "create device -> DEV-XXXXX + one-time pairing creds",
       "status": "PASS",
-      "evidence": "deviceId=DEV-UPUEVIN username=device_DEVUPUEVIN"
+      "evidence": "deviceId=DEV-G0N7RSS username=device_DEVG0N7RSS"
     },
     {
       "step": 5,
@@ -75,13 +81,13 @@
       "step": 11,
       "title": "realtime WS: device.telemetry event received within 15s",
       "status": "PASS",
-      "evidence": "event at=1789935039283"
+      "evidence": "event at=1790438261496"
     },
     {
       "step": 12,
       "title": "command fan=set(true) -> SUCCEEDED, reportedState.fan=true, WS command.acknowledged",
       "status": "PASS",
-      "evidence": "commandId=cmd_U8DPJ7F210KSUSM2 status=SUCCEEDED; ws ack status=ACKNOWLEDGED"
+      "evidence": "commandId=cmd_IYHTUDNAOXEWLAR8 status=SUCCEEDED; ws ack status=ACKNOWLEDGED"
     },
     {
       "step": 13,
@@ -93,19 +99,19 @@
       "step": 14,
       "title": "SIGKILL -> LWT -> OFFLINE + WS device.offline",
       "status": "PASS",
-      "evidence": "status=OFFLINE; ws event at=1789935038499"
+      "evidence": "status=OFFLINE; ws event at=1790438260730"
     },
     {
       "step": 15,
       "title": "reconnect with current token -> ONLINE + WS device.online",
       "status": "PASS",
-      "evidence": "ws event at=1789935043038"
+      "evidence": "ws event at=1790438265668"
     },
     {
       "step": 16,
       "title": "automation (temp>10 -> fan on) fires on telemetry ingest; rule deleted",
       "status": "PASS",
-      "evidence": "triggered command cmd_TT96Y5FCM07OTGQH createdBy=automation:eb2f683b-561b-4570-9198-24583d956448; deleted"
+      "evidence": "triggered command cmd_00NAQXGHUJ59TNCX createdBy=automation:b7abdcce-6aaf-4c74-a33b-84e7b93b886a; deleted"
     },
     {
       "step": "S1",

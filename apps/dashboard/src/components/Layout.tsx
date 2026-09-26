@@ -159,7 +159,8 @@ function SelectionProvider({ children }: { children: ReactNode }) {
 
 /* ---------- chrome ---------- */
 const NAV = [
-  { to: "/", label: "Devices", icon: "◈", end: true },
+  { to: "/", label: "Overview", icon: "◉", end: true },
+  { to: "/devices", label: "Devices", icon: "◈", end: true },
   { to: "/pair", label: "Pair device", icon: "⎋" },
   { to: "/automations", label: "Automations", icon: "⚡" },
   { to: "/settings", label: "Settings", icon: "⚙" },

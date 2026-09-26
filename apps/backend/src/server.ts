@@ -1,4 +1,8 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyServerOptions,
+} from "fastify";
+import { readFileSync } from "node:fs";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -51,7 +55,19 @@ export async function startServer(
   setBroker(broker.aedes);
   attachIngest(db, broker.aedes);
 
-  const fastify = Fastify({ logger: false });
+  // HTTPS is enabled only when BOTH TLS_KEY and TLS_CERT are set.
+  const fastifyOptions = { logger: false } as FastifyServerOptions & {
+    https?: { key: string; cert: string };
+  };
+  if (config.tlsKey && config.tlsCert) {
+    fastifyOptions.https = {
+      key: readFileSync(config.tlsKey, "utf8"),
+      cert: readFileSync(config.tlsCert, "utf8"),
+    };
+  }
+  const fastify: FastifyInstance = Fastify(
+    fastifyOptions as FastifyServerOptions,
+  );
   await fastify.register(helmet);
   await fastify.register(cors, { origin: true });
   await fastify.register(rateLimit, {
@@ -85,9 +101,10 @@ export async function startServer(
   await fastify.register(automationRoutes, { prefix: "/api" });
   await fastify.register(metaRoutes, { prefix: "/api" });
 
-  await fastify.listen({ port: config.port, host: "127.0.0.1" });
+  await fastify.listen({ port: config.port, host: config.httpHost });
   const httpPort = (fastify.server.address() as { port: number }).port;
-  const httpUrl = `http://127.0.0.1:${httpPort}`;
+  const scheme = config.tlsKey && config.tlsCert ? "https" : "http";
+  const httpUrl = `${scheme}://${config.httpHost}:${httpPort}`;
   console.log(`[http] api listening on ${httpUrl}`);
 
   const realtime = await startRealtime(db, config);

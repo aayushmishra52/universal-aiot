@@ -1,25 +1,24 @@
 {
-  "description": "Universal AIoT platform — canonical device protocol, virtual device simulator, backend (REST API + embedded MQTT broker + realtime WebSocket + automation engine), and React dashboard, all on one MQTT protocol (aiot/v1 topics). Virtual mode is the default testing mode: no physical ESP32 hardware required.",
+  "description": "Universal AIoT Platform \u2014 SDK generator, device runtime, virtual device, backend, and dashboard sharing one canonical protocol.",
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "mqtt": "^5.10.3",
-    "typescript": "^5.7.3",
-    "ws": "^8.18.1"
+    "typescript": "^5.7.3"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=20"
   },
   "name": "universal-aiot",
   "private": true,
   "scripts": {
-    "build": "npm run build --workspace=@aiot/contracts && npm run build --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
     "dev": "concurrently \"npm run dev --workspace=@aiot/backend\" \"npm run dev --workspace=@aiot/dashboard\"",
     "device:simulate": "npm run simulate --workspace=@aiot/virtual-device",
     "e2e": "node tests/e2e/run.mjs",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "start": "npm run start --workspace=@aiot/backend"
   },
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "workspaces": [
     "apps/*",
     "packages/*"

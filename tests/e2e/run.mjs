@@ -243,6 +243,32 @@ async function step3_createProject() {
   record(3, "create project 'Golden Room'", "PASS", "project created (id kept in report)");
 }
 
+async function step3b_envelopeShape() {
+  // Regression guard for the dashboard `*.map is not a function` crash:
+  // list endpoints must return envelope objects ({projects:[...]}), never bare arrays.
+  const authed = await api("GET", `/orgs/${S.orgId}/projects`, {
+    token: S.token1,
+  });
+  if (authed.status !== 200) throw new E2EError(`GET projects (authed) -> ${authed.status}`);
+  if (!authed.json || !Array.isArray(authed.json.projects)) {
+    throw new E2EError(
+      `GET /api/orgs/:id/projects must return {projects:[...]}; got ${JSON.stringify(authed.json)}`,
+    );
+  }
+  // Unauthenticated call must fail cleanly with a JSON 401, not crash or return HTML.
+  const unauthed = await api("GET", `/orgs/${S.orgId}/projects`);
+  if (unauthed.status !== 401) throw new E2EError(`GET projects (unauthed) -> ${unauthed.status}, want 401`);
+  if (!unauthed.json || typeof unauthed.json !== "object") {
+    throw new E2EError("unauthenticated GET projects did not return a JSON body");
+  }
+  record(
+    "E1",
+    "envelope contract: GET /api/orgs/:id/projects -> {projects:[...]}; unauthenticated -> JSON 401",
+    "PASS",
+    `projects=${authed.json.projects.length}; unauthed=${unauthed.status}`,
+  );
+}
+
 async function step4_createDevice() {
   const r = await api("POST", `/projects/${S.projectId}/devices`, {
     token: S.token1,
@@ -606,6 +632,7 @@ async function main() {
     step1_startBackend,
     step2_registerUser,
     step3_createProject,
+    step3b_envelopeShape,
     step4_createDevice,
     step5_startVirtualDevice,
     step6_deviceOnline,

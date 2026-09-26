@@ -1,0 +1,13 @@
+<%
+const pinout = {
+  board: boardId,
+  fqbn: board.fqbn,
+  deviceId: deviceId,
+  sensors: [],
+  actuators: []
+};
+plan.wiring.forEach(function(w) {
+  const entry = { label: w.label, pin: w.pin, vcc: w.vcc, gnd: w.gnd, signal: w.signal };
+  if (w.kind === 'sensor') pinout.sensors.push(entry); else pinout.actuators.push(entry);
+});
+%><%- JSON.stringify(pinout, null, 2) %>

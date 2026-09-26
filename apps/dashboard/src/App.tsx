@@ -9,6 +9,7 @@ import { Loading } from "./components/common";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { DevicesPage } from "./pages/DevicesPage";
+import { OverviewPage } from "./pages/OverviewPage";
 import { CreateDevicePage } from "./pages/CreateDevicePage";
 import { PairDevicePage } from "./pages/PairDevicePage";
 import { DevicePage } from "./pages/DevicePage";
@@ -86,7 +87,8 @@ export function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<DevicesPage />} />
+              <Route index element={<OverviewPage />} />
+              <Route path="devices" element={<DevicesPage />} />
               <Route path="devices/new" element={<CreateDevicePage />} />
               <Route path="devices/:deviceId" element={<DevicePage />} />
               <Route path="pair" element={<PairDevicePage />} />

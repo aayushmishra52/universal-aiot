@@ -7,6 +7,7 @@ import {
   type DeviceSummary,
 } from "../api/client";
 import { useSelection } from "../components/Layout";
+import { CredentialsModal } from "../components/CredentialsModal";
 import { useRealtimeState } from "../ws/RealtimeContext";
 import { useTheme } from "../theme/ThemeContext";
 import {
@@ -26,6 +27,7 @@ export function DevicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [recentFails, setRecentFails] = useState(0);
+  const [credDevice, setCredDevice] = useState<DeviceSummary | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
 
@@ -246,6 +248,18 @@ export function DevicesPage() {
                   <div className="dc-meta" style={{ fontSize: 12 }}>
                     <span title={fmtTime(d.lastSeen)}>Last seen {timeAgo(d.lastSeen)}</span>
                   </div>
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      className="btn btn-sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setCredDevice(d);
+                      }}
+                    >
+                      🔑 Credentials
+                    </button>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -266,6 +280,14 @@ export function DevicesPage() {
                 ))}
               </div>
             </div>
+          )}
+
+          {credDevice && (
+            <CredentialsModal
+              deviceId={credDevice.deviceId}
+              deviceName={credDevice.name}
+              onClose={() => setCredDevice(null)}
+            />
           )}
         </>
       )}

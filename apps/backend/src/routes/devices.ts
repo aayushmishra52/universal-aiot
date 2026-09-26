@@ -25,6 +25,91 @@ const TelemetryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(100),
 });
 
+const IssueCredentialSchema = z.object({
+  label: z.string().trim().min(1).max(100).optional(),
+  scopes: z.array(z.string().trim().min(1).max(32)).min(1).max(16).optional(),
+});
+
+const DEFAULT_CREDENTIAL_SCOPES = ["telemetry", "commands"];
+
+interface IssuedCredential {
+  id: string;
+  clientId: string;
+  /** Plaintext secret — returned to the caller exactly once, never stored. */
+  secret: string;
+  label: string | null;
+  scopes: string[];
+  createdAt: number;
+}
+
+function generateClientId(db: import("better-sqlite3").Database): string {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const clientId = `dc_${randomAlnum(16)}`;
+    const exists = db
+      .prepare(
+        `SELECT 1 FROM device_credentials
+         WHERE (username = ? OR client_id = ?) AND revoked_at IS NULL`,
+      )
+      .get(clientId, clientId);
+    if (!exists) return clientId;
+  }
+  throw new Error("failed to generate a unique client id");
+}
+
+/**
+ * Issue a new device credential row. Only the bcrypt hash is stored; the
+ * plaintext secret is returned once and must never be persisted or logged.
+ */
+function issueDeviceCredential(
+  db: import("better-sqlite3").Database,
+  deviceId: string,
+  opts: { label?: string; scopes?: string[]; username?: string } = {},
+): IssuedCredential {
+  const clientId = generateClientId(db);
+  const secret = randomAlnum(48);
+  const id = randomUUID();
+  const now = nowMs();
+  const scopes = opts.scopes ?? DEFAULT_CREDENTIAL_SCOPES;
+  db.prepare(
+    `INSERT INTO device_credentials
+     (id, device_id_fk, username, client_id, label, scopes, password_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    deviceId,
+    opts.username ?? clientId,
+    clientId,
+    opts.label ?? null,
+    JSON.stringify(scopes),
+    hashPassword(secret),
+    now,
+  );
+  return { id, clientId, secret, label: opts.label ?? null, scopes, createdAt: now };
+}
+
+interface CredentialRow {
+  id: string;
+  client_id: string;
+  label: string | null;
+  scopes: string;
+  created_at: number;
+  last_used_at: number | null;
+  revoked_at: number | null;
+}
+
+/** Metadata only — the secret and its hash are never serialized. */
+function serializeCredential(row: CredentialRow) {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    label: row.label,
+    scopes: safeJsonParse<string[]>(row.scopes, []),
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+    revokedAt: row.revoked_at,
+  };
+}
+
 function generateDeviceId(db: import("better-sqlite3").Database): string {
   for (let attempt = 0; attempt < 10; attempt++) {
     const id = `DEV-${randomAlnum(7)}`;
@@ -220,6 +305,12 @@ export default async function deviceRoutes(fastify: FastifyInstance): Promise<vo
             }
           : null,
         health: healthRow ? serializeHealth(healthRow) : null,
+        // Advertised connection endpoints for remote devices: the dashboard
+        // and the aiot-sdk CLI read these instead of hardcoding localhost.
+        connectivity: {
+          mqttUrl: fastify.config.publicMqttUrl,
+          apiUrl: fastify.config.publicApiUrl,
+        },
       };
     },
   );
@@ -282,15 +373,117 @@ export default async function deviceRoutes(fastify: FastifyInstance): Promise<vo
           "UPDATE device_credentials SET revoked_at = ? WHERE device_id_fk = ? AND revoked_at IS NULL",
         ).run(now, deviceId);
         db.prepare(
-          `INSERT INTO device_credentials (id, device_id_fk, username, password_hash, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-        ).run(randomUUID(), deviceId, username, hashPassword(deviceToken), now);
+          `INSERT INTO device_credentials (id, device_id_fk, username, client_id, password_hash, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(randomUUID(), deviceId, username, username, hashPassword(deviceToken), now);
       })();
       audit(db, `user:${request.user!.userId}`, "device.credentials_rotated", {
         deviceId,
         projectId: access.value.projectId,
       });
       return { ok: true, deviceId, username, deviceToken };
+    },
+  );
+
+  fastify.post(
+    "/devices/:deviceId/credentials",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const access = requireDeviceAccess(
+        fastify.db,
+        request.user!.userId,
+        (request.params as { deviceId: string }).deviceId,
+        "ADMIN",
+      );
+      if (!access.ok) {
+        const denied = accessDenied(access);
+        return reply.code(denied.status).send(denied.body);
+      }
+      const parsed = IssueCredentialSchema.safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ error: "invalid_request" });
+      const db = fastify.db;
+      const deviceId = access.value.device.device_id;
+      const issued = issueDeviceCredential(db, deviceId, {
+        label: parsed.data.label,
+        scopes: parsed.data.scopes,
+      });
+      audit(db, `user:${request.user!.userId}`, "device.credential_issued", {
+        deviceId,
+        projectId: access.value.projectId,
+        credentialId: issued.id,
+        clientId: issued.clientId,
+        label: issued.label,
+      });
+      // `secret` is plaintext and shown exactly once — it is never stored.
+      return reply.code(201).send({
+        id: issued.id,
+        clientId: issued.clientId,
+        secret: issued.secret,
+        label: issued.label,
+        scopes: issued.scopes,
+        createdAt: issued.createdAt,
+      });
+    },
+  );
+
+  fastify.get(
+    "/devices/:deviceId/credentials",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const access = requireDeviceAccess(
+        fastify.db,
+        request.user!.userId,
+        (request.params as { deviceId: string }).deviceId,
+        "ADMIN",
+      );
+      if (!access.ok) {
+        const denied = accessDenied(access);
+        return reply.code(denied.status).send(denied.body);
+      }
+      const rows = fastify.db
+        .prepare(
+          `SELECT id, client_id, label, scopes, created_at, last_used_at, revoked_at
+           FROM device_credentials WHERE device_id_fk = ? ORDER BY created_at DESC`,
+        )
+        .all(access.value.device.device_id) as CredentialRow[];
+      // Metadata only: the secret and its hash are never returned.
+      return { credentials: rows.map(serializeCredential) };
+    },
+  );
+
+  fastify.delete(
+    "/devices/:deviceId/credentials/:credId",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const access = requireDeviceAccess(
+        fastify.db,
+        request.user!.userId,
+        (request.params as { deviceId: string }).deviceId,
+        "ADMIN",
+      );
+      if (!access.ok) {
+        const denied = accessDenied(access);
+        return reply.code(denied.status).send(denied.body);
+      }
+      const db = fastify.db;
+      const deviceId = access.value.device.device_id;
+      const credId = (request.params as { credId: string }).credId;
+      const row = db
+        .prepare(
+          "SELECT id, revoked_at FROM device_credentials WHERE id = ? AND device_id_fk = ?",
+        )
+        .get(credId, deviceId) as { id: string; revoked_at: number | null } | undefined;
+      if (!row) return reply.code(404).send({ error: "not_found" });
+      const now = nowMs();
+      db.prepare(
+        "UPDATE device_credentials SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+      ).run(now, credId);
+      audit(db, `user:${request.user!.userId}`, "device.credential_revoked", {
+        deviceId,
+        projectId: access.value.projectId,
+        credentialId: credId,
+      });
+      return { ok: true, id: credId, revokedAt: row.revoked_at ?? now };
     },
   );
 

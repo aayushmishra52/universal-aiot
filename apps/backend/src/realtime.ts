@@ -54,13 +54,13 @@ export async function startRealtime(
   config: AppConfig,
 ): Promise<RealtimeHandles> {
   clients.clear();
-  const wss = new WebSocketServer({ port: config.wsPort, host: "127.0.0.1" });
+  const wss = new WebSocketServer({ port: config.wsPort, host: config.httpHost });
   await new Promise<void>((resolve, reject) => {
     wss.once("listening", () => resolve());
     wss.once("error", reject);
   });
   const port = (wss.address() as { port: number }).port;
-  console.log(`[realtime] websocket listening on 127.0.0.1:${port}`);
+  console.log(`[realtime] websocket listening on ${config.httpHost}:${port}`);
 
   wss.on("connection", (ws) => {
     const client: Client = { ws, authed: false, projects: new Set() };

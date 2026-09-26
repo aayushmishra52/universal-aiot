@@ -1,0 +1,64 @@
+# Testing — <%= deviceName %> (`<%= deviceId %>`)
+
+Run the full pipeline with:
+
+```sh
+aiot-sdk test
+```
+
+## Pipeline
+
+1. **Static validation**
+   - `manifest.json` parses against `DeviceManifestSchema` (canonical protocol)
+   - `config/aiot.config.json` exists and is valid
+   - Secret scan: no passwords/tokens/API keys in git-tracked files
+     (`config/config.h` is gitignored and therefore never scanned)
+2. **Compile** — `arduino-cli compile --fqbn <%= board.fqbn %> --export-binaries`
+3. **Protocol test** — the generated manifest parses; topic builders round-trip
+4. **Simulator test** — an in-process MQTT broker (aedes) runs a full
+   telemetry + command round-trip against the manifest: manifest publish,
+   telemetry publish, command → ACK → RESULT, presence, health. Every payload
+   is validated with the `@aiot/contracts` Zod schemas.
+5. **Report** — `TEST-REPORT.json` + `TEST-REPORT.md` are written next to this
+   file.
+
+## Publish gate
+
+The device is **PUBLISHABLE** only if every step passes. The report always
+contains:
+
+```json
+{ "verdict": "PUBLISHABLE | HOLD", "hardwareSmokeTest": "not_run" }
+```
+
+`HARDWARE_SMOKE_TEST` stays `"not_run"` until you flash real hardware and run
+the smoke checklist below.
+
+## Hardware smoke test (manual)
+
+1. `aiot-sdk flash --port <serial-port>` and open the serial monitor at 115200.
+2. Expect the state line sequence:
+   `BOOT → SELF_TEST → NETWORK_CONNECTING → MQTT_CONNECTING → REGISTERING → ONLINE`,
+   each prefixed with `[AIOT]`.
+3. Confirm telemetry arrives on
+   `aiot/v1/<%= orgId %>/<%= projectId %>/<%= deviceId %>/telemetry`.
+4. Publish a command on `.../command`:
+   ```json
+   {
+     "kind": "command", "protocolVersion": "1.0",
+     "commandId": "smoke-1", "deviceId": "<%= deviceId %>",
+     "capabilityId": "<%= manifest.capabilities.find(c => c.kind === 'actuator') ? manifest.capabilities.find(c => c.kind === 'actuator').id : 'led' %>",
+     "action": "set", "params": { "value": true },
+     "issuedAt": 0, "expiresAt": 9999999999999
+   }
+   ```
+   Expect `ACKNOWLEDGED` then `SUCCEEDED` results with `kind:"result"`.
+5. Confirm the retained manifest on `.../manifest` matches `manifest.json`.
+6. Update `TEST-REPORT.md`: set `HARDWARE_SMOKE_TEST` to `passed` with date.
+
+## Troubleshooting
+
+- `No such file or directory: X.h` → a library is missing: run `aiot-sdk repair`.
+- `was not declared in this scope` → check the hint printed above the raw log.
+- MQTT never connects → verify `MQTT_HOST`/`MQTT_PORT` in `config/config.h`
+  and that the broker is reachable from the device's WiFi network.

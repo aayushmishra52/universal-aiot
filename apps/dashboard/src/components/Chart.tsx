@@ -139,3 +139,132 @@ export function Sparkline({
     </svg>
   );
 }
+
+export interface DonutSegment {
+  value: number;
+  /** Any CSS color, e.g. "var(--green)". */
+  color: string;
+  label: string;
+}
+
+/**
+ * Dependency-free SVG donut chart built from stroked circle arcs.
+ * Renders a dashed empty placeholder when every segment is zero.
+ */
+export function Donut({
+  segments,
+  size = 168,
+  thickness = 26,
+  centerTop,
+  centerBottom,
+  emptyLabel = "No devices",
+}: {
+  segments: DonutSegment[];
+  size?: number;
+  thickness?: number;
+  centerTop?: string;
+  centerBottom?: string;
+  emptyLabel?: string;
+}) {
+  const total = segments.reduce((a, s) => a + Math.max(s.value, 0), 0);
+  const r = (size - thickness) / 2;
+  const C = 2 * Math.PI * r;
+  const cx = size / 2;
+
+  if (total <= 0) {
+    return (
+      <div
+        style={{
+          height: size,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--text-faint)",
+          fontSize: 12.5,
+          border: "1px dashed var(--border)",
+          borderRadius: "var(--radius-sm)",
+        }}
+      >
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  let acc = 0;
+  const arcs = segments
+    .map((s, i) => {
+      const frac = Math.max(s.value, 0) / total;
+      // 2px visual gap between segments; skip invisible slivers.
+      const len = frac * C - 2;
+      const offset = acc * C;
+      acc += frac;
+      return { ...s, len, offset, key: `${s.label}-${i}` };
+    })
+    .filter((a) => a.len > 1);
+
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        width={size}
+        height={size}
+        role="img"
+        aria-label={`Donut chart: ${segments.map((s) => `${s.label}: ${s.value}`).join(", ")}`}
+      >
+        <circle
+          cx={cx}
+          cy={cx}
+          r={r}
+          fill="none"
+          stroke="var(--surface-2)"
+          strokeWidth={thickness}
+        />
+        {arcs.map((a) => (
+          <circle
+            key={a.key}
+            cx={cx}
+            cy={cx}
+            r={r}
+            fill="none"
+            style={{ stroke: a.color }}
+            strokeWidth={thickness}
+            strokeDasharray={`${a.len.toFixed(1)} ${(C - a.len).toFixed(1)}`}
+            strokeDashoffset={(-a.offset).toFixed(1)}
+            transform={`rotate(-90 ${cx} ${cx})`}
+          />
+        ))}
+      </svg>
+      {(centerTop || centerBottom) && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          {centerTop && (
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 750,
+                fontVariantNumeric: "tabular-nums",
+                lineHeight: 1,
+              }}
+            >
+              {centerTop}
+            </div>
+          )}
+          {centerBottom && (
+            <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 4 }}>
+              {centerBottom}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

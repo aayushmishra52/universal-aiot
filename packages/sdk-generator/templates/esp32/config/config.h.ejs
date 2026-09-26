@@ -1,0 +1,20 @@
+/**
+ * Real device secrets — GENERATED, DO NOT COMMIT.
+ * This file is gitignored. Copy config/config.example.h to start, or run
+ * `aiot-sdk create` with --wifi-ssid/--wifi-pass/--mqtt-user/--mqtt-pass.
+ */
+#pragma once
+
+#define WIFI_SSID "<%= wifiSsid %>"
+#define WIFI_PASS "<%= wifiPass %>"
+
+#define MQTT_HOST "<%= mqttHost %>"
+#define MQTT_PORT <%= mqttPort %>
+#define MQTT_USER "<%= mqttUser %>"
+#define MQTT_PASS "<%= mqttPass %>"
+#define MQTT_TLS <%= tls ? "true" : "false" %>
+
+#define DEVICE_ID "<%= deviceId %>"
+#define PROJECT_ID "<%= projectId %>"
+#define ORG_ID "<%= orgId %>"
+#define DEVICE_NAME "<%= deviceName %>"

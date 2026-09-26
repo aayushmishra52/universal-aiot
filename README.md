@@ -1,218 +1,291 @@
 # Universal AIoT Platform
 
-An end-to-end IoT platform on one canonical device protocol: a **canonical
-protocol layer** (MQTT topics `aiot/v1/...` + Zod schemas), a **virtual
-device** that speaks the exact same protocol as real firmware, a **backend**
-(REST API + embedded MQTT broker + realtime WebSocket + automation engine),
-and a **React dashboard**. Virtual mode is the default testing mode — no
-physical ESP32 hardware required.
-
-Firmware for real ESP32 devices is scaffolded by the **`aiot-sdk` CLI**,
-which lives in its own repo:
-**[github.com/\<your-username\>/aiot-sdk](https://github.com/<your-username>/aiot-sdk)**
-and generates firmware against this platform's protocol.
+One integrated platform: an **SDK generator** that scaffolds ESP32 firmware, a
+**canonical device protocol** (MQTT topics `aiot/v1/...` + Zod schemas), a
+**virtual device** that speaks the exact same protocol for hardware-free
+testing, a **backend** (REST API + embedded MQTT broker + realtime WebSocket +
+automation engine), and a **React dashboard**.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        UNIVERSAL AIOT                            │
-│                                                                  │
-│   ┌──────────────┐   ┌──────────────────┐   ┌─────────────────┐   │
-│   │  ESP32       │   │  VIRTUAL DEVICE  │   │  BACKEND        │   │
-│   │  (firmware   │   │  (@aiot/virtual- │   │  (@aiot/backend)│   │
-│   │  from the    │   │  device)         │   │  ┌───────────┐  │   │
-│   │  aiot-sdk    │   │  speaks the SAME │   │  │ REST API  │  │   │
-│   │  CLI —       │   │  MQTT protocol   │   │  │  /api     │  │   │
-│   │  separate    │   │  as real         │   │  ├───────────┤  │   │
-│   │  repo)       │   │  hardware        │   │  │ MQTT      │  │   │
-│   └──────┬───────┘   └────────┬─────────┘   │  │ broker    │  │   │
-│          │  MQTT              │  MQTT       │  │ (aedes)   │  │   │
-│          └────────────────────┴─────────────┤  ├───────────┤  │   │
-│       aiot/v1/{org}/{proj}/{dev}/{kind}     │  │ WebSocket │  │   │
-│       kind: manifest · status · telemetry   │  │ realtime  │  │   │
-│             · command · presence · health   │  ├───────────┤  │   │
-│                                             │  │ SQLite    │  │   │
-│                                             │  │ store     │  │   │
-│                                             │  ├───────────┤  │   │
-│                                             │  │ automation│  │   │
-│                                             │  │ engine    │  │   │
-│                                             │  └───────────┘  │   │
-│                                             └─────────────────┘   │
-│                                                                  │
-│   DASHBOARD (@aiot/dashboard) — Vite+React: devices, telemetry   │
-│   charts, commands, pairing, automations, live WS updates        │
-│                                                                  │
-│   CONTRACTS (@aiot/contracts) — the canonical protocol every     │
-│   package shares (topics, Zod schemas, validation)              │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         UNIVERSAL AIOT                          │
+├────────────────┬──────────────────────┬─────────────────────────┤
+│  ESP32 DEVICE  │   VIRTUAL DEVICE     │        BACKEND          │
+│  (firmware     │  (@aiot/virtual-     │  (@aiot/backend)        │
+│   from aiot-   │   device)            │  ┌──────────────────┐   │
+│   sdk)         │  speaks the SAME     │  │ REST API /api    │   │
+│                │  MQTT protocol as    │  │ (Fastify)        │   │
+│       MQTT ────┴─────  real hardware  ├──┤ MQTT broker      │   │
+│  aiot/v1/{org}/{proj}/{dev}/{kind}   │  │ (embedded aedes) │   │
+│   kind: manifest · status · telemetry │  │ WebSocket        │   │
+│         · command · presence · health │  │ realtime events  │   │
+│                                      │  │ SQLite store     │   │
+│                                      │  │ automation engine│   │
+│                                      │  └──────────────────┘   │
+├────────────────┴──────────────────────┴─────────────────────────┤
+│  DASHBOARD (@aiot/dashboard) — Vite+React: device list,         │
+│  telemetry charts, commands, automations, WS live updates       │
+├─────────────────────────────────────────────────────────────────┤
+│  SDK GENERATOR (@aiot/sdk-generator) — `aiot-sdk` CLI: create,  │
+│  build (arduino-cli), test (static+compile+protocol+simulator), │
+│  simulate, flash, package. CONTRACTS (@aiot/contracts) — the    │
+│  canonical protocol every package shares.                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Protocol:** every device — real ESP32 or virtual — publishes/consumes the
+same topics and validates against the same schemas (`packages/contracts`).
+Virtual mode is the default testing mode: no physical hardware required.
+
+## Project tree
+
+```
+universal-aiot/
+├── apps/
+│   ├── backend/            # @aiot/backend — REST API, MQTT broker, WS realtime, automations
+│   │   ├── src/            # auth/, mqtt/ (broker+ingest+publish), routes/, rules/, services/
+│   │   └── tests/          # vitest suites
+│   └── dashboard/          # @aiot/dashboard — Vite+React frontend (dist/ after build)
+├── packages/
+│   ├── contracts/          # @aiot/contracts — canonical protocol: topics, schemas, validation
+│   ├── virtual-device/     # @aiot/virtual-device — bin: aiot-virtual-device
+│   └── sdk-generator/      # @aiot/sdk-generator — bin: aiot-sdk
+├── tests/
+│   └── e2e/                # tests/e2e/run.mjs — headless end-to-end acceptance runner
+├── TEST-REPORT.md          # acceptance report (human readable)
+├── TEST-REPORT.json        # acceptance report (machine readable)
+├── .env.example            # all env vars with defaults
+└── package.json            # workspaces: apps/*, packages/*
 ```
 
 ## Quickstart
 
 ```bash
-cd ~/workspace/release/universal-aiot
+cd ~/workspace/universal-aiot
 
-# 1. install all workspaces (node >= 22 required)
+# 1. install (sequential workspace install)
 npm install
 
-# 2. copy env and set a real JWT secret
-cp .env.example .env   # then edit JWT_SECRET
-
-# 3. build everything
+# 2. build everything
 npm run build --workspaces --if-present
 
-# 4. run all workspace test suites
-npm test
+# 3. run all workspace test suites
+npm test --workspaces --if-present
 
-# 5. run the headless end-to-end acceptance (boots backend + virtual device)
+# 4. run the full end-to-end acceptance (headless, ~20s)
 npm run e2e
 
-# 6. dev servers: backend (tsx watch) + dashboard (vite), concurrently
+# 5. dev servers (backend + dashboard concurrently)
 npm run dev
 
-# 7. simulate a device without hardware
+# 6. simulate a device without hardware
 npm run device:simulate        # aiot-virtual-device --preset golden-room
 ```
 
-The dashboard opens at `http://localhost:5173` (Vite default) and talks to
-the backend at `http://localhost:4000` via the `/api` prefix.
+For a real acceptance run on fresh ports, the e2e runner does this itself:
 
-## Dashboard tour
+```bash
+PORT=4100 MQTT_PORT=11883 WS_PORT=4101 \
+DATABASE_URL=file:/tmp/aiot-e2e.db JWT_SECRET=e2e-test-secret \
+node tests/e2e/run.mjs
+```
 
-- **Login / Register** — JWT auth; a new user gets their own org as OWNER.
-- **Devices** — per-project device list with status (ONLINE/OFFLINE),
-  last-seen, capability counts.
-- **Device detail** — telemetry charts, desired/reported state, health
-  (from the device's `health` topic), capability list.
-- **Pair device** — shows the one-time pairing credentials (deviceId +
-  pairing username + password) generated when the device was created.
-- **Commands** — issue capability commands (e.g. `fan=set`) with TTL; the
-  backend tracks command status through to the device's result.
-- **Automations** — threshold rules (`capability op value` → action) with
-  run history; the backend rules engine evaluates on each telemetry ingest.
-- **Settings** — org members, API URL config.
+It boots the backend, registers a user, creates a project + device, runs a
+virtual device through pairing, telemetry, commands, safety checks,
+disconnect/reconnect, automations and security checks — then writes
+`tests/e2e/report.json` and exits 0 only if every step passes.
 
-## Pairing flow
+## Run commands
 
-Pairing binds a physical (or virtual) device to a backend device record:
-
-1. Create the device (`POST /api/projects/:projectId/devices`) as a project
-   ADMIN. The response includes a **one-time pairing credential**, shown
-   **once**: `{ deviceId, username, password }`.
-2. The device connects to the MQTT broker (`mqtt://host:1883`) using those
-   credentials. The broker authenticates with bcrypt — either the pairing
-   credential (unused, unexpired, unrevoked) or an active device credential.
-3. The device (or dashboard on its behalf) calls `POST /api/pair` with
-   `{ deviceId, username, password }`. The pairing row is marked **used**,
-   any previous device credential is **revoked**, and a fresh 32-char device
-   token is issued (shown once) for subsequent MQTT authentication.
-4. Pairing credentials expire after `PAIRING_TTL_HOURS` (default 24) and can
-   be revoked at any time (`POST /devices/:deviceId/credentials/rotate`
-   issues a fresh device token; `DELETE /devices/:deviceId` revokes
-   everything).
-
-Full lifecycle details: [docs/PAIRING.md](docs/PAIRING.md).
-
-## API overview
-
-Base path: `/api`. All routes except `/health`, `/auth/register`,
-`/auth/login` require `Authorization: Bearer <JWT>`.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/auth/register` | create user (+ personal org) |
-| POST | `/auth/login` | get JWT |
-| GET | `/auth/me` | current user |
-| POST/GET | `/orgs` | create / list orgs |
-| POST | `/orgs/:orgId/members` | add member (ADMIN) |
-| GET/POST | `/orgs/:orgId/projects` | list / create projects |
-| GET/POST | `/projects/:projectId/devices` | list / create device (create returns one-time pairing credential) |
-| GET/DELETE | `/devices/:deviceId` | device detail (+capabilities, state, health) / delete (ADMIN) |
-| POST | `/devices/:deviceId/credentials/rotate` | rotate device token (ADMIN) |
-| GET | `/devices/:deviceId/telemetry` | history (`?capability=&from=&to=&limit=`) |
-| GET | `/devices/:deviceId/state` | desired/reported state |
-| GET | `/devices/:deviceId/events` | audit/event feed |
-| GET | `/devices/:deviceId/health` | last health report |
-| POST | `/pair` | pair device with pairing credential |
-| POST/GET | `/devices/:deviceId/commands` | send command / list commands |
-| GET/POST/PUT/DELETE | `/projects/:projectId/automations…` | CRUD automations |
-| GET | `/projects/:projectId/automations/:id/runs` | automation run history |
-| GET | `/health` | backend health |
-
-Full reference: [docs/API.md](docs/API.md). Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-Device protocol (topics + schemas): `packages/contracts`.
+| Command | What it does |
+|---|---|
+| `npm install` | install all workspaces (root, sequential) |
+| `npm run build` | `tsc` builds for every workspace (+ `vite build` for dashboard) |
+| `npm test` | `vitest run` for every workspace |
+| `npm run e2e` | `node tests/e2e/run.mjs` — live acceptance (needs built packages) |
+| `npm run dev` | backend (`tsx watch`) + dashboard (`vite`) concurrently |
+| `npm run device:simulate` | `aiot-virtual-device --preset golden-room` |
+| `npm run build --workspace=@aiot/dashboard` | dashboard production build → `apps/dashboard/dist/` |
+| `aiot-virtual-device --help` | all simulator flags (`--broker`, `--org`, `--project`, `--device`, `--username`, `--password`, `--preset`, `--tick`) |
+| `aiot-sdk create --help` | scaffold firmware (`--board`, `--device-id`, `--sensor`×, `--actuator`×, …) |
+| `aiot-sdk test --project-dir <dir>` | full device test pipeline: static, compile, protocol, simulator |
+| `aiot-sdk repair` | install pinned ESP32 core + libraries (needs `arduino-cli` on PATH) |
 
 ## Environment variables
 
-Copy `.env.example` → `.env`. Never commit `.env`.
+Copy `.env.example` to `.env`. Key variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `4000` | backend HTTP port (`/api`) |
 | `MQTT_PORT` | `1883` | embedded MQTT broker port |
 | `WS_PORT` | `4001` | realtime WebSocket port |
-| `DATABASE_URL` | `file:./data/aiot.db` | SQLite database path |
-| `JWT_SECRET` | *(required)* | JWT signing secret — **the backend refuses to boot without it** |
-| `JWT_EXPIRES_IN` | `12h` | JWT lifetime |
-| `RATE_LIMIT_AUTH_PER_MIN` | `30` | strict limiter for auth/pair routes |
-| `RATE_LIMIT_GLOBAL_PER_MIN` | `600` | global rate limit |
-| `SWEEP_INTERVAL_MS` | `10000` | command-expiry sweeper cadence |
+| `HTTP_HOST` | `127.0.0.1` | API/WS bind host — set `0.0.0.0` to expose on all interfaces |
+| `MQTT_HOST` | `127.0.0.1` | broker bind host — set `0.0.0.0` for remote devices |
+| `PUBLIC_MQTT_URL` | derived | URL advertised to dashboard/SDK for devices (e.g. `mqtts://broker.example.com:8883`) |
+| `PUBLIC_API_URL` | derived | URL advertised to dashboard/SDK for the API |
+| `MQTT_TLS_PORT` / `MQTT_TLS_KEY` / `MQTT_TLS_CERT` | `8883` | broker TLS listener (enabled only when key + cert are both set) |
+| `TLS_KEY` / `TLS_CERT` | — | HTTPS for the API (enabled only when both are set) |
+| `FIREBASE_PROJECT_ID` | — | enables optional Firebase Auth (`POST /api/auth/firebase`); see `docs/FIREBASE-AUTH.md` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | — | service-account JSON for `firebase-admin` (or use Application Default Credentials) |
+| `DATABASE_URL` | `file:./data/aiot.db` | SQLite database (`file:` prefix + path) |
+| `JWT_SECRET` | *(required)* | JWT signing secret — backend **refuses to boot** without it |
+| `JWT_EXPIRES_IN` | `12h` | token lifetime |
+| `RATE_LIMIT_AUTH_PER_MIN` | `30` | strict limiter for `/auth/*` + `/pair` (per IP) |
+| `RATE_LIMIT_GLOBAL_PER_MIN` | `600` | limiter for all other routes |
+| `SWEEP_INTERVAL_MS` | `10000` | command-expiry sweeper interval |
 | `PAIRING_TTL_HOURS` | `24` | pairing credential lifetime |
-| `VITE_API_URL` | `http://localhost:4000` | backend URL for the dashboard |
-| `VITE_WS_URL` | `ws://localhost:4001` | WS URL for the dashboard |
+| `VITE_API_URL` | `http://localhost:4000` | dashboard → backend (build-time) |
+| `VITE_WS_URL` | `ws://localhost:4001` | dashboard → realtime (build-time) |
 
-## Testing
+## Pairing flow
+
+1. `POST /api/projects/:projectId/devices` (owner) →
+   `{ device: { deviceId: "DEV-XXXXX" }, pairing: { username, password } }`.
+   The password is **shown once**; only its bcrypt hash is stored.
+2. The device (or `aiot-virtual-device`) connects to MQTT with
+   `username` / `password` and publishes its manifest + telemetry.
+3. A user (or onboarding app) calls `POST /api/pair`
+   `{ deviceId, username, password }` with a Bearer token →
+   `{ ok: true, rotated: true, deviceToken }`. The pairing row is marked used,
+   all previous device credentials are revoked — the old password stops
+   working immediately.
+4. The device reconnects with the **same username** and the **new
+   `deviceToken`** as its MQTT password.
+
+MQTT auth: broker credentials are checked per-connect against
+`device_credentials` (bcrypt); pairing credentials are checked against the
+`pairings` table only during pairing.
+
+## Device credentials & remote access
+
+Per-device MQTT login credentials so a device can connect from anywhere:
 
 ```bash
-npm test            # vitest for every workspace: contracts, backend, virtual-device, dashboard
-npm run e2e         # headless acceptance: backend + virtual device on scratch ports,
-                    # pairing → telemetry → commands → disconnect/reconnect → automations
-                    # → security checks; writes tests/e2e/report.json; exits 0 iff all pass
+# Issue (ADMIN only) — the secret is returned ONCE, only its bcrypt hash is stored
+curl -X POST $API/api/devices/DEV-XXXX/credentials \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"label":"field unit","scopes":["telemetry","commands"]}'
+# -> {id, clientId, secret, label, scopes, createdAt}
+
+curl -H "Authorization: Bearer $TOKEN" $API/api/devices/DEV-XXXX/credentials
+# -> [{id, clientId, label, scopes, createdAt, lastUsedAt, revokedAt}]  (never secrets)
+
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  $API/api/devices/DEV-XXXX/credentials/<credId>   # revoke
 ```
 
-`npm test` in a workspace runs its own suite. Backend tests use an in-memory
-SQLite DB; the e2e runner uses a scratch DB (`/tmp/aiot-e2e.db`) and scratch
-ports (4100/11883/4101 by default), so it never touches dev data.
+Or use the SDK (see the `aiot-sdk` repo):
 
-## Project structure
+```bash
+aiot-sdk login
+aiot-sdk devices
+aiot-sdk provision --device DEV-XXXX --out ./aiot.credentials.env
+aiot-sdk init --credentials-file ./aiot.credentials.env --project-dir ./fw
+```
+
+The dashboard Devices page has a "Credentials" button per device: provision,
+copy the one-time secret, download it as `.env`/JSON, and revoke old ones.
+`GET /api/devices/:id` returns `connectivity: {mqttUrl, apiUrl}` built from
+`PUBLIC_MQTT_URL` / `PUBLIC_API_URL`.
+
+To reach devices outside your LAN: set `HTTP_HOST`/`MQTT_HOST=0.0.0.0`, put the
+backend on a VPS (or Render/Railway/Fly.io free tier), set
+`PUBLIC_MQTT_URL`/`PUBLIC_API_URL` to the public addresses, and optionally
+enable TLS (`MQTT_TLS_KEY`/`MQTT_TLS_CERT`, `TLS_KEY`/`TLS_CERT`). You can
+also point `PUBLIC_MQTT_URL` at a free managed broker (HiveMQ Cloud / EMQX
+Cloud free tier) instead of the embedded aedes broker. Full checklist:
+`docs/SELF-HOSTING.md`; credential details: `docs/DEVICE-CREDENTIALS.md`.
+
+## Firebase auth (optional)
+
+Local email/password auth (JWT + SQLite) is the default and needs no setup.
+To offer Firebase sign-in instead, set `FIREBASE_PROJECT_ID` on the backend
+(then `npm install firebase-admin` in `apps/backend` — it's an
+`optionalDependency`, loaded lazily only when enabled) and provide
+`FIREBASE_SERVICE_ACCOUNT_JSON` or Application Default Credentials. The
+dashboard then shows "Continue with Firebase" (advertised via
+`GET /api/meta` → `{ok, time, firebaseAuth}`) with email/password sign-in
+through the Firebase Auth REST API — no Firebase JS SDK in the bundle. The
+SDK also accepts a Firebase ID token: `aiot-sdk login --token <idToken>`.
+Free-tier setup: `docs/FIREBASE-AUTH.md` (Firebase Spark plan — no paid
+service).
+
+## Self-hosting minimums
+
+**Node 20+**, **512 MB RAM** (backend idles at ~96 MB measured), **~250 MB
+disk**. No Docker or Postgres required — SQLite + embedded MQTT broker are
+the defaults. One-command production start:
+
+```bash
+npm run build
+# set JWT_SECRET in .env (required), then:
+npm run start                                # API :4000, MQTT :1883, WS :4001
+# serve apps/dashboard/dist with any static server (SPA: fall back to index.html)
+```
+
+See `docs/SELF-HOSTING.md` for VPS deploy, free-tier options, TLS, and the
+connect-from-anywhere checklist; `docs/PERFORMANCE.md` for measured numbers.
+
+## Key API endpoints
 
 ```
-universal-aiot/
-├── apps/
-│   ├── backend/        # @aiot/backend — Fastify REST API, embedded aedes MQTT
-│   │                   # broker, ws realtime, automation rules engine, SQLite
-│   │   ├── src/       # auth/, routes/ (auth, orgs, devices, pairing, commands,
-│   │   │              # automations, meta), mqtt/ (broker, ingest, publish),
-│   │   │              # rules/, services/, migrations/, realtime.ts
-│   │   └── tests/     # vitest suites
-│   └── dashboard/      # @aiot/dashboard — Vite+React frontend
-│       └── src/       # pages/, api/, auth/, components/, ws/, theme/
-├── packages/
-│   ├── contracts/      # @aiot/contracts — canonical protocol: topics, Zod
-│   │                   # schemas, realtime event types, validation helpers
-│   └── virtual-device/ # @aiot/virtual-device — bin: aiot-virtual-device,
-│                       # hardware-free simulator speaking the exact protocol
-├── tests/e2e/          # run.mjs — headless end-to-end acceptance runner
-├── docs/               # ARCHITECTURE.md, API.md, PAIRING.md, DEVELOPMENT.md
-├── examples/           # (example device configs / client snippets)
-├── TEST-REPORT.md/.json# acceptance report from the original monorepo build
-├── .env.example        # all env vars with defaults
-└── package.json        # npm workspaces: apps/*, packages/*
+POST /api/auth/register            {email, password, name} -> {token, user, org}
+POST /api/auth/login               -> {token, user, orgs}
+POST /api/auth/firebase            {idToken} -> {token, user, orgs}  (optional, 501 when disabled)
+GET  /api/meta                     -> {ok, time, firebaseAuth}
+POST /api/orgs/:orgId/members      {email, role: OWNER|ADMIN|VIEWER}
+POST /api/orgs/:orgId/projects     {name} -> {project}
+POST /api/projects/:projectId/devices   {name, type, model} -> {device, pairing}
+POST /api/devices/:deviceId/credentials {label?, scopes?} -> {id, clientId, secret (once)}
+GET  /api/devices/:deviceId/credentials -> [credential metadata]
+DELETE /api/devices/:deviceId/credentials/:credId   (revoke)
+POST /api/pair                     {deviceId, username, password} -> {ok, rotated, deviceToken}
+GET  /api/devices/:deviceId        -> {device, capabilities, state, health}
+GET  /api/devices/:deviceId/telemetry?limit=N
+POST /api/devices/:deviceId/commands    {capabilityId, action, params, ttlMs}
+GET  /api/devices/:deviceId/commands?limit=N
+POST /api/projects/:projectId/automations {name, deviceId?, enabled, condition, action}
+WS   ws://host:WS_PORT             {"type":"auth","token"} then {"type":"subscribe","projectId"}
+                                   -> {"type":"event","event":{kind:"device.telemetry"|"device.online"|"device.offline"|"command.acknowledged"|..., projectId, deviceId, at, data}}
 ```
 
 ## Security notes
 
-- Passwords and device tokens are **bcrypt-hashed**; plaintext is shown once
-  and never logged (auth failures log without the password).
-- Pairing credentials are **single-use** with a TTL and are revoked on use,
-  rotation, or device deletion; unknown/used/expired pairings return 404 to
-  avoid enumeration.
-- `JWT_SECRET` is mandatory; the process exits at boot without it.
-- Auth/pairing routes have an aggressive rate limit; all other routes a
-  global limit; security headers via `@fastify/helmet`.
-- SQLite by default; point `DATABASE_URL` at a durable path in production
-  and run the backend behind TLS (the embedded broker has no TLS
-  termination — use a reverse proxy or `stunnel` in front).
+- **Credential rotation:** pairing is one-time; on success the old pairing
+  password is dead and a fresh `deviceToken` is issued. Unknown/used/expired
+  pairings return 404 to avoid credential enumeration.
+- **Authz:** org roles `OWNER`/`ADMIN`/`VIEWER`. Device + command writes need
+  `ADMIN`; viewers get 403. Non-members get 404 (no resource existence leaks).
+- **Command safety:** capability must exist and be an actuator; params are
+  validated against the capability type (`invalid_parameter` → 400); commands
+  carry `issuedAt`/`expiresAt` and devices **must not** execute expired
+  commands (they publish an `EXPIRED` result instead).
+- **Rate limiting:** strict 30 req/min/IP on auth + pairing; 600 req/min global.
+- **Secrets hygiene:** pairing passwords and device tokens are shown once and
+  stored bcrypt-hashed; MQTT/WiFi secrets go to the gitignored `config.h` in
+  generated firmware; `aiot-sdk test` runs a secret scan as a publish gate.
+- JWTs expire (`JWT_EXPIRES_IN`, default 12h); the backend refuses to start
+  without `JWT_SECRET`.
 
-## License
+## Limitations
 
-MIT — see [LICENSE](LICENSE).
+- **Virtual mode is the default test mode** — the e2e suite, the SDK simulator
+  test, and `npm run device:simulate` exercise the protocol without hardware.
+  `aiot-sdk test` reports `HARDWARE_SMOKE_TEST: not_run`; flash real hardware
+  and follow each project's `TESTING.md` before shipping.
+- Single-node SQLite storage (better-sqlite3); no horizontal scaling story.
+- The embedded MQTT broker (aedes) is in-process — fine for development and
+  testing, not a substitute for a managed broker at fleet scale.
+- Real firmware compile requires `arduino-cli` on PATH plus the ESP32 core and
+  libraries (`aiot-sdk repair` installs the pinned set).
+- **No telemetry retention/pruning** — telemetry accumulates unbounded in
+  SQLite; prune old rows manually (`DELETE FROM telemetry WHERE ts < ?`) or
+  back up and rotate the DB file (see `docs/SELF-HOSTING.md`).
+- Dashboard Overview KPIs are computed client-side from existing endpoints
+  (telemetry rate is sampled; fleet uptime % has no aggregation endpoint yet).
+
+## Test reports
+
+- [TEST-REPORT.md](./TEST-REPORT.md) — latest full acceptance run (all green)
+- [TEST-REPORT.json](./TEST-REPORT.json) — same, machine readable

@@ -1,0 +1,31 @@
+{
+  "bin": {
+    "aiot-sdk": "./dist/cli/index.js"
+  },
+  "dependencies": {
+    "@aiot/contracts": "1.0.0",
+    "@inquirer/prompts": "^7.8.0",
+    "aedes": "^0.51.0",
+    "commander": "^12.1.0",
+    "ejs": "^3.1.10",
+    "mqtt": "^5.10.0",
+    "zod": "^3.23.8"
+  },
+  "description": "aiot-sdk CLI: scaffold, validate, build, test, flash and package Universal AIoT ESP32 firmware projects.",
+  "devDependencies": {
+    "@types/ejs": "^3.1.5",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "name": "@aiot/sdk-generator",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "type": "module",
+  "version": "1.0.0"
+}

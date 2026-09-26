@@ -1,6 +1,8 @@
 import AedesDefault from "aedes";
 import type { AedesOptions, createBroker as createBrokerDecl } from "aedes";
 import net from "node:net";
+import tls from "node:tls";
+import { readFileSync } from "node:fs";
 import type { Database } from "better-sqlite3";
 import { topicCommand, topicRoot } from "@aiot/contracts";
 import { verifyPassword } from "../auth/password.js";
@@ -26,6 +28,9 @@ export interface BrokerHandles {
   aedes: AedesBroker;
   server: net.Server;
   port: number;
+  /** Present only when MQTT_TLS_KEY + MQTT_TLS_CERT are configured. */
+  tlsServer?: tls.Server;
+  tlsPort?: number;
   close: () => Promise<void>;
 }
 
@@ -88,13 +93,20 @@ export async function startBroker(
       }
       const credential = db
         .prepare(
-          `SELECT c.password_hash AS password_hash, c.device_id_fk AS device_id,
+          `SELECT c.id AS credential_id, c.password_hash AS password_hash,
+                  c.device_id_fk AS device_id,
                   d.org_id AS org_id, d.project_id AS project_id
            FROM device_credentials c JOIN devices d ON d.device_id = c.device_id_fk
-           WHERE c.username = ? AND c.revoked_at IS NULL`,
+           WHERE (c.username = ? OR c.client_id = ?) AND c.revoked_at IS NULL`,
         )
-        .get(uname) as
-        | { password_hash: string; device_id: string; org_id: string; project_id: string }
+        .get(uname, uname) as
+        | {
+            credential_id: string;
+            password_hash: string;
+            device_id: string;
+            org_id: string;
+            project_id: string;
+          }
         | undefined;
       if (credential && verifyPassword(secret, credential.password_hash)) {
         (client as AuthenticatedClient).device = {
@@ -102,6 +114,10 @@ export async function startBroker(
           orgId: credential.org_id,
           projectId: credential.project_id,
         };
+        db.prepare("UPDATE device_credentials SET last_used_at = ? WHERE id = ?").run(
+          now,
+          credential.credential_id,
+        );
         callback(null, true);
         return;
       }
@@ -145,22 +161,56 @@ export async function startBroker(
   const server = net.createServer(aedes.handle);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(config.mqttPort, "127.0.0.1", () => {
+    server.listen(config.mqttPort, config.mqttHost, () => {
       server.removeListener("error", reject);
       resolve();
     });
   });
   const port = (server.address() as net.AddressInfo).port;
-  console.log(`[mqtt] broker listening on 127.0.0.1:${port}`);
+  console.log(`[mqtt] broker listening on ${config.mqttHost}:${port}`);
+
+  // Optional TLS listener: enabled only when BOTH key and cert are set
+  // (MQTT_TLS_KEY / MQTT_TLS_CERT). Remote devices use the advertised
+  // PUBLIC_MQTT_URL (mqtts://...) to reach it.
+  let tlsServer: tls.Server | undefined;
+  let tlsPort: number | undefined;
+  if (config.mqttTlsKey && config.mqttTlsCert) {
+    const tlsOptions = {
+      key: readFileSync(config.mqttTlsKey, "utf8"),
+      cert: readFileSync(config.mqttTlsCert, "utf8"),
+    };
+    tlsServer = tls.createServer(tlsOptions, aedes.handle);
+    await new Promise<void>((resolve, reject) => {
+      tlsServer!.once("error", reject);
+      tlsServer!.listen(config.mqttTlsPort, config.mqttHost, () => {
+        tlsServer!.removeListener("error", reject);
+        resolve();
+      });
+    });
+    tlsPort = (tlsServer.address() as net.AddressInfo).port;
+    console.log(`[mqtt] broker TLS listening on ${config.mqttHost}:${tlsPort}`);
+  }
 
   return {
     aedes,
     server,
     port,
+    tlsServer,
+    tlsPort,
     close: () =>
       new Promise<void>((resolve, reject) => {
         aedes.close(() => {
-          server.close((err) => (err ? reject(err) : resolve()));
+          server.close((err) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            if (tlsServer) {
+              tlsServer.close((tlsErr) => (tlsErr ? reject(tlsErr) : resolve()));
+            } else {
+              resolve();
+            }
+          });
         });
       }),
   };
