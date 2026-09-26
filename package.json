@@ -10,7 +10,7 @@
   "name": "universal-aiot",
   "private": true,
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace=@aiot/contracts && npm run build --workspace=@aiot/sdk-generator && npm run build --workspace=@aiot/virtual-device && npm run build --workspace=@aiot/backend && npm run build --workspace=@aiot/dashboard",
     "dev": "concurrently \"npm run dev --workspace=@aiot/backend\" \"npm run dev --workspace=@aiot/dashboard\"",
     "device:simulate": "npm run simulate --workspace=@aiot/virtual-device",
     "e2e": "node tests/e2e/run.mjs",
